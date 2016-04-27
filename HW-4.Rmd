@@ -1,6 +1,6 @@
 ---
 title: "MATH 216 Homework 4"
-author: "WRITE YOUR NAME HERE"
+author: "Kyler Blodgett"
 output: html_document
 ---
 
@@ -17,15 +17,16 @@ suppressPackageStartupMessages(library(rgdal))
 suppressPackageStartupMessages(library(maptools))
 # For interactive maps
 suppressPackageStartupMessages(library(leaflet))
+library(spdep)
 ```
 
 ## Admistrative:
 
 Please indicate
 
-* Who you collaborated with:
-* Roughly how much time you spent on this HW:
-* What gave you the most trouble:
+* Who you collaborated with: Aminata, Delaney, Christian, Phil
+* Roughly how much time you spent on this HW: 6
+* What gave you the most trouble: Moran's I stat for question 1(b). Also I didn't even try question 2 yet and have to come to office hours to figure out Social Explorer. 
 * Any comments you have: 
 
 
@@ -76,14 +77,59 @@ Virginia](http://en.wikipedia.org/wiki/List_of_counties_in_Virginia)
 This function eliminates all non-alphanumeric characters and spaces and converts
 all text to lower case:
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
 clean_text <- function(text){
   text <- gsub("[^[:alnum:]]", "", text)
   text <- gsub(" ", "", text)
   text <- tolower(text)
   return(text)
 }
-clean_text("HeLLO wOrLd.")
+
+
+COUNTY <- read.csv("COUNTY.csv", header = TRUE) %>% tbl_df() 
+
+county_votes <- COUNTY %>%
+  select(CID, STATE, COUNTY, PBUSH, PGORE, PNADER) %>%
+  rename(cid=`CID`, state=`STATE`, county=`COUNTY`, pbush=`PBUSH`,pgore=`PGORE`, pnader=`PNADER`)
+
+county_votes$pbush <- as.numeric(as.character(county_votes$pbush))
+county_votes$pgore <- as.numeric(as.character(county_votes$pgore))
+county_votes$pnader <- as.numeric(as.character(county_votes$pnader))
+
+county_votes <- county_votes %>%
+  mutate(pdem = (pgore + pnader)) %>%
+  mutate(is.split = ifelse(abs(pbush - pdem) <=0.02, 1, 0)) %>%
+  mutate(is.dem = ifelse(pdem>pbush & is.split!=1, 1, 0)) %>%
+  mutate(is.rep = ifelse(pbush>pdem & is.split!=1, 1, 0)) %>%
+  mutate(clean_county = clean_text(as.character(county))) %>%
+  select(-county, -pgore, -pnader)
+
+US_county <- US_county %>%
+  mutate(subregion = clean_text(as.character(subregion)))
+
+complete_df <- left_join(US_county, county_votes, by=c("subregion"="clean_county"))%>%
+  arrange(state, subregion)
+
+# Trying to find Moran's I stat...from Lec 19
+
+#Turn it into a shape file
+#PDX_shapefile <- readOGR(dsn="complete_df", layer="pdem") %>%
+ # spTransform(CRS("+proj=longlat +ellps=WGS84"))
+
+#Get neighbor info
+#PDX_nb <- poly2nb(PDX_shapefile, queen = FALSE)
+#summary(PDX_nb)
+
+#Assign basic weights and test if autocorrelation is more signif than random noise
+#n <- nrow(complete_df)
+#noise <- runif(n, min=0, max=1)
+#ggplot(data=NULL, aes(x=noise)) +
+ # geom_histogram(boundary=0, binwidth=0.1)
+
+#PDX_weights <- nb2listw(PDX_nb, style = "B", zero.policy = TRUE)
+#noise <- runif(n, min=0, max=1)
+#moran.test(noise, PDX_weights)
+
 ```
 
 For the following `ggplot`, see how I didn't define `data` nor any `aes`thetics
@@ -91,11 +137,14 @@ in the base `ggplot`, but only within the respective `geom`'s. This is a nice
 trick that allows you to have different `data` and different `aes` apply to
 different `geom`'s; in this case state-level vs county-level data.
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
 ggplot(data=NULL) +
-  geom_polygon(data=US_county, aes(x=long, y=lat, group=group, fill=1)) +
-  geom_path(data=US_county, aes(x=long, y=lat, group=group), col="black", size=0.05) +
-  geom_path(data=US_state, aes(x=long, y=lat, group=group), col="black", size=0.1) +
+  geom_polygon(data=complete_df, aes(x=long, y=lat, group=group, fill=pdem)) +
+  geom_path(data=US_state, aes(x=long, y=lat, group=group), col="black", size=0.4) +
+  geom_path(data=US_county, aes(x=long, y=lat, group=group), col="black", size=0.01) +
+  scale_fill_gradient2(complete_df$pdem, low = "red", mid = "white", high = "blue", midpoint = 0.5, space = "rgb", na.value = "grey50", guide = "colourbar") +
+  ggtitle("2000 Presidential Voting by County, Bluer for Dems and Redder for Reps") +
+  labs(x="Longitude", y="Latitude") +
   coord_map()
 ```
 
@@ -106,9 +155,7 @@ ggplot(data=NULL) +
 
 ```
 
-
-
-
+This maps shows us the distribution of voting in the 2000 presidential election. Bluer/purpler counties prefered the Democrtatic candidates, Gore and Nader, while redder counties preferred Bush. White counties indicate a close vote between the democrats and their liberal opponent. For the spatial autocorrelation test, I was really stumped. I understand how it worked in the lecture notes, but am not sure how to convert my lat/long coordinates into a shapefile that the readOGR() command could interpret. 
 
 
 ## Question 2:
@@ -135,7 +182,7 @@ between the different ethnic groups.
 
 Here is some starter code:
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
 shapefile_name <- paste(getwd(), "/VT_census_tracts/tl_2015_50_tract.shp", sep="")
 VT <- readOGR(shapefile_name, layer = "tl_2015_50_tract", verbose = FALSE)
 leaflet(VT) %>%
